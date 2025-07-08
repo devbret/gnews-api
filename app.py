@@ -9,7 +9,7 @@ load_dotenv()
 # === CONFIGURATION ===
 API_KEY = os.getenv("GNEWS_API_KEY")
 BASE_URL = "https://gnews.io/api/v4/search"
-KEYWORDS = ["keywords",]
+KEYWORDS = ["keyword","keyword"]
 OUTPUT_FILE = "gnews_results.txt"
 
 # === FUNCTION ===
