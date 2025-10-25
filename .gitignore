@@ -1,5 +1,5 @@
 venv/
 .env
-extracted_articles.txt
+gnews_cleaned.txt
 gnews_log.txt
 gnews_results.txt
