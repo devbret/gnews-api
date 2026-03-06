@@ -1,5 +1,6 @@
 venv/
 .env
+gnews_cleaned.log
 gnews_cleaned.txt
 gnews_log.txt
 gnews_results.txt

@@ -1,42 +1,107 @@
-import re
 import argparse
+import logging
+import re
+from dataclasses import dataclass
 from pathlib import Path
+from typing import List, Optional
 
 FIELD_ORDER = ["Title", "Source", "Content"]
 
+
+@dataclass(frozen=True)
+class Config:
+    input_file: str
+    output_file: str
+    log_file: str
+
+
+def load_config() -> Config:
+    parser = argparse.ArgumentParser(
+        description="Extract human-readable values from GNews .txt output."
+    )
+    parser.add_argument(
+        "-i",
+        "--input",
+        default="gnews_results.txt",
+        help="Path to input .txt",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default="gnews_cleaned.txt",
+        help="Path to output .txt",
+    )
+    parser.add_argument(
+        "-l",
+        "--log",
+        default="gnews_cleaned.log",
+        help="Path to log file",
+    )
+    args = parser.parse_args()
+
+    return Config(
+        input_file=args.input,
+        output_file=args.output,
+        log_file=args.log,
+    )
+
+
+def setup_logging(log_file: str) -> logging.Logger:
+    Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+
+    logger = logging.getLogger("gnews_cleanup")
+    logger.setLevel(logging.INFO)
+    logger.handlers.clear()
+    logger.propagate = False
+
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setFormatter(formatter)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
+
+    return logger
+
+
 def is_separator(line: str) -> bool:
-    s = line.strip()
-    return s and set(s) == {"-"} and len(s) >= 20
+    stripped = line.strip()
+    return bool(stripped) and set(stripped) == {"-"} and len(stripped) >= 20
 
-def parse_file(text: str):
-    field_re = re.compile(r'^(Title|Source|Published|URL|Content):\s*(.*)$')
-    articles = []
-    current = {k: "" for k in FIELD_ORDER}
-    current_field = None
-    lines = text.splitlines()
 
-    def flush_article():
-        nonlocal current
-        if any(current.get(k, "").strip() for k in FIELD_ORDER):
-            articles.append([current.get(k, "").rstrip() for k in FIELD_ORDER])
-        current = {k: "" for k in FIELD_ORDER}
+def flush_article(current: dict[str, str], articles: List[List[str]]) -> dict[str, str]:
+    if any(current.get(field, "").strip() for field in FIELD_ORDER):
+        articles.append([current.get(field, "").rstrip() for field in FIELD_ORDER])
+    return {field: "" for field in FIELD_ORDER}
 
-    for raw in lines:
-        line = raw.rstrip("\n")
+
+def parse_file(text: str, logger: Optional[logging.Logger] = None) -> List[List[str]]:
+    field_re = re.compile(r"^(Title|Source|Published|URL|Content):\s*(.*)$")
+    articles: List[List[str]] = []
+    current = {field: "" for field in FIELD_ORDER}
+    current_field: Optional[str] = None
+
+    for line in text.splitlines():
         if is_separator(line):
             if any(current.values()):
-                flush_article()
+                current = flush_article(current, articles)
             current_field = None
             continue
 
-        m = field_re.match(line)
-        if m:
-            fname, fval = m.group(1), m.group(2)
-            if fname in FIELD_ORDER:
-                current_field = fname
-                current[fname] = fval.strip()
+        match = field_re.match(line)
+        if match:
+            field_name, field_value = match.group(1), match.group(2)
+
+            if field_name in FIELD_ORDER:
+                current_field = field_name
+                current[field_name] = field_value.strip()
             else:
                 current_field = None
+
             continue
 
         if current_field in FIELD_ORDER:
@@ -46,32 +111,59 @@ def parse_file(text: str):
                 current[current_field] = line
 
     if any(current.values()):
-        flush_article()
+        current = flush_article(current, articles)
+
+    if logger:
+        logger.info("Parsed %s cleaned article(s) from input text", len(articles))
+
     return articles
 
-def main():
-    ap = argparse.ArgumentParser(description="Extract human-readable values from GNews .txt output.")
-    ap.add_argument("-i", "--input", default="gnews_results.txt", help="Path to input .txt")
-    ap.add_argument("-o", "--output", default="gnews_cleaned.txt", help="Path to output .txt")
-    args = ap.parse_args()
 
-    in_path = Path(args.input)
-    out_path = Path(args.output)
+def read_input(config: Config, logger: logging.Logger) -> str:
+    input_path = Path(config.input_file)
 
-    text = in_path.read_text(encoding="utf-8")
-    articles = parse_file(text)
+    if not input_path.exists():
+        logger.critical("Input file does not exist: %s", config.input_file)
+        raise SystemExit(1)
 
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("w", encoding="utf-8") as f:
+    logger.info("Reading input file: %s", config.input_file)
+    return input_path.read_text(encoding="utf-8")
+
+
+def write_output(
+    config: Config,
+    logger: logging.Logger,
+    articles: List[List[str]],
+) -> None:
+    output_path = Path(config.output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    logger.info("Writing %s cleaned article(s) to: %s", len(articles), config.output_file)
+
+    with output_path.open("w", encoding="utf-8") as file:
         for idx, (title, source, content) in enumerate(articles, start=1):
-            if title:    f.write(f"{title}\n")
-            else:        f.write("\n")
-            if source:   f.write(f"{source}\n")
-            else:        f.write("\n")
-            if content:  f.write(f"{content}\n")
-            else:        f.write("\n")
+            file.write(f"{title}\n" if title else "\n")
+            file.write(f"{source}\n" if source else "\n")
+            file.write(f"{content}\n" if content else "\n")
+
             if idx < len(articles):
-                f.write("\n")
+                file.write("\n")
+
+
+def main() -> None:
+    config = load_config()
+    logger = setup_logging(config.log_file)
+
+    logger.info("=== GNews cleanup started ===")
+    logger.info("Input: %s", config.input_file)
+    logger.info("Output: %s", config.output_file)
+
+    text = read_input(config, logger)
+    articles = parse_file(text, logger)
+    write_output(config, logger, articles)
+
+    logger.info("=== GNews cleanup complete ===")
+
 
 if __name__ == "__main__":
     main()
