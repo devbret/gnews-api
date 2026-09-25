@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import requests
 from dotenv import load_dotenv
@@ -252,6 +252,11 @@ def collect_articles(
             label = keyword or config.category or "top-headlines"
             logger.info("--- Fetching articles for: '%s' ---", label)
 
+            seen_for_keyword: Set[str] = set()
+            total_available: Optional[int] = None
+            received = 0
+            page_size = 0
+
             for page in range(1, config.pages + 1):
                 data = fetch_news(session, config, logger, keyword, page)
                 if not data:
@@ -265,12 +270,21 @@ def collect_articles(
                     page,
                 )
 
+                if not articles:
+                    logger.info("No articles left for '%s' after page %s", label, page)
+                    break
+
+                fresh = 0
                 for raw_article in articles:
                     article = normalize_article(raw_article)
                     url = (article.get("url") or "").strip()
 
                     if not url:
                         continue
+
+                    if url not in seen_for_keyword:
+                        seen_for_keyword.add(url)
+                        fresh += 1
 
                     existing = seen_by_url.get(url)
                     if existing is not None:
@@ -282,7 +296,43 @@ def collect_articles(
                     seen_by_url[url] = article
                     collected.append(article)
 
-                if len(articles) < config.max_per_page:
+                received += len(articles)
+
+                raw_total = data.get("totalArticles")
+                if isinstance(raw_total, int):
+                    total_available = raw_total
+
+                if len(articles) > page_size:
+                    if page_size == 0 and len(articles) < config.max_per_page:
+                        logger.info(
+                            "API returned %s of the %s articles requested, "
+                            "paging '%s' in blocks of %s",
+                            len(articles),
+                            config.max_per_page,
+                            label,
+                            len(articles),
+                        )
+                    page_size = len(articles)
+
+                if total_available is not None and received >= total_available:
+                    logger.info(
+                        "Reached all %s article(s) reported for '%s'",
+                        total_available,
+                        label,
+                    )
+                    break
+
+                if len(articles) < page_size:
+                    logger.info("Last page reached for '%s' at page %s", label, page)
+                    break
+
+                if fresh == 0:
+                    logger.info(
+                        "Page %s for '%s' repeated earlier results, stopping "
+                        "(this plan may not support the 'page' parameter)",
+                        page,
+                        label,
+                    )
                     break
 
                 time.sleep(config.page_delay_sec)
