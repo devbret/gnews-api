@@ -46,6 +46,10 @@ Below are instructions for installing and running this application on a Linux ma
 
 ## Other Considerations
 
+Below you will find information not covered in the installation and use sections above. Including the abilities this repo is intended to demonstrate. As well as an overview of the license this code is made available with. And a way to contact the maintainer with questions, suggestions and collaboration opportunities.
+
+### Abilities Demonstrated
+
 This project repo is intended to demonstrate an ability to do the following:
 
 - Query news articles from the GNews API using configurable settings such as keywords, language and country
@@ -55,5 +59,9 @@ This project repo is intended to demonstrate an ability to do the following:
 - Save fetched articles as a structured text file grouped by keyword
 
 - Clean the raw GNews output into a simpler text format containing only each article’s title, source and content
+
+### License Information
+
+This repository is distributed under the MIT License. You are free to use, copy, modify, merge, publish, distribute, sublicense and sell copies of this software, including as part of proprietary or commercial work. The single condition is the copyright and permission notices contained in the LICENSE file must be included with any copy or substantial portion of the software that you redistribute. The software is provided "as is", without warranty of any kind, and the copyright holder is not liable for any claim or damages arising from its use.
 
 If you have any questions or would like to collaborate, please reach out either on GitHub or via [my website](https://bretbernhoft.com/).
